@@ -8,7 +8,7 @@
 # 注入到 PATH / LD_LIBRARY_PATH / DOTNET_ROOT。
 # =============================================================================
 
-: "${PS_ROOT:=${HOME}/puppy-stardew}"
+: "${PS_ROOT:=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)}"
 : "${PS_HOME:=$PS_ROOT/home/steam}"
 export PS_ROOT PS_HOME
 

@@ -16,7 +16,7 @@
 # =============================================================================
 set -uo pipefail
 
-PS_ROOT="${PS_ROOT:-$HOME/puppy-stardew}"
+PS_ROOT="${PS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd)}"
 DEPS="$PS_ROOT/deps"
 DEPS32="$PS_ROOT/deps32"
 BIN="$PS_ROOT/bin"

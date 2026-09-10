@@ -6,7 +6,7 @@
 # =============================================================================
 set -euo pipefail
 
-PS_ROOT="${PS_ROOT:-$HOME/puppy-stardew}"
+PS_ROOT="${PS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd)}"
 DOTNET_DIR="$PS_ROOT/dotnet"
 CHANNEL="${CHANNEL:-6.0}"
 

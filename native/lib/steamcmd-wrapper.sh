@@ -8,7 +8,7 @@
 #   2) 否则用本仓库解压到 $PS_HOME/steamcmd 的 SteamCMD，借助 $PS_ROOT/deps32
 #      里的 32 位加载器（ld-linux.so.2）直接运行 linux32/steamcmd，无需系统 i386 架构。
 # =============================================================================
-PS_ROOT="${PS_ROOT:-$HOME/puppy-stardew}"
+PS_ROOT="${PS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd)}"
 PS_HOME="${PS_HOME:-$PS_ROOT/home/steam}"
 SC_DIR="$PS_HOME/steamcmd"
 
