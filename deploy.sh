@@ -21,11 +21,23 @@
 # =============================================================================
 set -uo pipefail
 
+# ---- 日志函数（必须在使用前定义，否则首次调用 fetch_repo 会报 say: 未找到命令）----
+G=$'\033[0;32m'; Y=$'\033[1;33m'; R=$'\033[0;31m'; B=$'\033[0;34m'; N=$'\033[0m'
+say()  { echo -e "${G}[deploy]${N} $*"; }
+warn() { echo -e "${Y}[deploy]${N} ⚠ $*"; }
+err()  { echo -e "${R}[deploy]${N} ✗ $*" >&2; }
+step() { echo -e "${B}== $* ==${N}"; }
+
 # ---- 路径 ----
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 PS_ROOT="${PS_ROOT:-$SELF_DIR}"
 PS_HOME="$PS_ROOT/home/steam"
 export PS_ROOT PS_HOME
+
+# 探测版本管理器（Mise/nvm 等）预装的 node/dotnet 并加入 PATH，
+# 否则非交互 bash 找不到镜像里 Mise 装的 Node 22 / .NET，会重复下载。
+# shellcheck disable=SC1091
+. "$PS_ROOT/native/lib/probe-runtime.sh"
 
 UPDATE=0
 [ "${1:-}" = "--update" ] && UPDATE=1
@@ -94,13 +106,6 @@ if ! command -v git >/dev/null 2>&1; then
   exit 1
 fi
 
-# ---- 颜色 ----
-G=$'\033[0;32m'; Y=$'\033[1;33m'; R=$'\033[0;31m'; B=$'\033[0;34m'; N=$'\033[0m'
-say()  { echo -e "${G}[deploy]${N} $*"; }
-warn() { echo -e "${Y}[deploy]${N} ⚠ $*"; }
-err()  { echo -e "${R}[deploy]${N} ✗ $*" >&2; }
-step() { echo -e "${B}== $* ==${N}"; }
-
 # 探测下载工具
 DL=""
 command -v curl >/dev/null 2>&1 && DL=curl
@@ -110,7 +115,7 @@ dl() { # dl <url> <dest>
   else wget -q -T 20 -O "$2" "$1" 2>/dev/null; fi
 }
 
-# 探测系统 steamcmd / node / dotnet
+# 探测系统 steamcmd / node / dotnet / xvfb（已先经 probe-runtime 加载 Mise 路径）
 have_steamcmd() { command -v steamcmd >/dev/null 2>&1; }
 have_node()     { command -v node >/dev/null 2>&1 && [ "$(node -v 2>/dev/null | tr -d 'v' | cut -d. -f1)" -ge 18 ] 2>/dev/null; }
 have_dotnet()   { command -v dotnet >/dev/null 2>&1; }

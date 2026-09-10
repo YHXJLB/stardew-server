@@ -368,8 +368,11 @@ if [ "$SERVER_PORT" != "$GAME_PORT" ]; then
     if command -v socat >/dev/null 2>&1; then
         log_info "Forwarding UDP ${SERVER_PORT} -> ${GAME_PORT} (socat)"
         socat UDP-RECV:"$SERVER_PORT",fork UDP-SENDTO:127.0.0.1:"$GAME_PORT" >/dev/null 2>&1 &
+    elif command -v python3 >/dev/null 2>&1 && [ -f "$PS_ROOT/native/lib/udp-forward.py" ]; then
+        log_info "Forwarding UDP ${SERVER_PORT} -> ${GAME_PORT} (python3 兜底，socat 未安装)"
+        python3 "$PS_ROOT/native/lib/udp-forward.py" "$SERVER_PORT" "$GAME_PORT" 127.0.0.1 >/dev/null 2>&1 &
     else
-        log_warn "socat 未安装，无法把 UDP ${SERVER_PORT} 转发到游戏端口 ${GAME_PORT}；游戏将仅能通过 ${GAME_PORT} 访问"
+        log_warn "socat 与 python3 均不可用，无法把 UDP ${SERVER_PORT} 转发到游戏端口 ${GAME_PORT}；游戏将仅能通过 ${GAME_PORT} 访问"
     fi
 fi
 

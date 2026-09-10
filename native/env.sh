@@ -12,6 +12,17 @@
 : "${PS_HOME:=$PS_ROOT/home/steam}"
 export PS_ROOT PS_HOME
 
+# 平台注入的环境变量（简幻欢 AIO，见 customer-aio-path-list）
+# SERVER_PORT 由 entrypoint 读取；TZ / SERVER_MEMORY 在此兜底，确保
+# 游戏 / 面板 / steam 进程使用正确时区（默认 Asia/Shanghai）。
+export TZ="${TZ:-Asia/Shanghai}"
+[ -n "${SERVER_MEMORY:-}" ] && export SERVER_MEMORY
+
+# 探测版本管理器（Mise/nvm 等）预装的 node/dotnet 并加入 PATH，
+# 否则非交互 bash 找不到镜像里 Mise 装的 Node 22 / .NET。
+# shellcheck disable=SC1091
+. "$PS_ROOT/native/lib/probe-runtime.sh"
+
 # 项目脚本目录
 export PATH="$PS_ROOT/app/scripts:$PATH"
 
