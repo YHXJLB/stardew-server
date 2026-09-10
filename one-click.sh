@@ -16,6 +16,9 @@
 #   PS_ROOT=/x/y bash one-click.sh   # 指定部署根目录
 #   REPO_BRANCH=main bash one-click.sh # 改用其它分支（默认 nodocker）
 #
+# 空目录也能一行启动（脚本来自管道时自动以当前目录为部署根）：
+#   bash <(curl -fsSL https://raw.githubusercontent.com/YHXJLB/stardew-server/nodocker/one-click.sh)
+#
 # 平台接入（简幻欢自定义镜像）：把启动命令设为
 #   bash /home/container/one-click.sh
 # 即可：首次开机自动部署，之后每次开机直接启动。
@@ -28,7 +31,19 @@ log()  { echo -e "${G}[一键]${N} $*"; }
 warn() { echo -e "${Y}[一键]${N} ⚠ $*"; }
 
 # ---- 路径：脚本所在目录即部署根目录 ----
-SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# 兼容两种运行方式：
+#   1) bash ./one-click.sh            -> BASH_SOURCE 是普通文件路径，取其所在目录
+#   2) bash <(curl ... one-click.sh)  -> BASH_SOURCE 是 /dev/fd/xx 管道，无法 cd，
+#      此时改以当前工作目录($PWD) 作为部署根目录（需是可写目录，如 /home/container）
+_SRC="${BASH_SOURCE[0]:-$0}"
+case "$_SRC" in
+  /dev/*|/proc/*|/dev/fd/*)
+    SELF_DIR="$PWD"
+    ;;
+  *)
+    SELF_DIR="$(cd "$(dirname "$_SRC")" 2>/dev/null && pwd)" || SELF_DIR="$PWD"
+    ;;
+esac
 PS_ROOT="${PS_ROOT:-$SELF_DIR}"
 export PS_ROOT
 mkdir -p "$PS_ROOT"
