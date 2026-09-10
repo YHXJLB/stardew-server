@@ -17,3 +17,6 @@ bin/
 
 # 部署时由 deploy.sh 生成的实例文件（含本机 SERVER_PORT）
 server.properties
+
+# one-click.sh 部署完成标记（首次部署后生成，避免重复拉取）
+.deployed

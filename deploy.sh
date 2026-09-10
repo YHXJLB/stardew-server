@@ -34,6 +34,9 @@ UPDATE=0
 # 默认走代理镜像 https://30006000.xyz/ ，失败时自动回退直连。
 # 设 USE_PROXY=0 或 GIT_PROXY=none 可强制直连。
 REPO_URL="${REPO_URL:-https://github.com/YHXJLB/stardew-server.git}"
+# 注意：远程 main 仍是上游 Docker 版；我们的非 Docker 改造在 nodocker 分支。
+# 默认克隆 nodocker，避免误拉到 Docker 版本。
+REPO_BRANCH="${REPO_BRANCH:-nodocker}"
 GIT_PROXY="${GIT_PROXY:-https://30006000.xyz/}"
 USE_PROXY="${USE_PROXY:-1}"
 [ "${GIT_PROXY:-}" = "none" ] && USE_PROXY=0
@@ -58,7 +61,7 @@ fetch_repo() {
     return 0
   fi
   # 否则克隆（代理优先，失败回退直连）
-  say "从 $REPO_URL 克隆项目源码..."
+  say "从 $REPO_URL (分支 $REPO_BRANCH) 克隆项目源码..."
   local urls=()
   [ -n "$GIT_PROXY" ] && urls+=( "${GIT_PROXY}${REPO_URL}" )
   urls+=( "$REPO_URL" )
@@ -66,7 +69,7 @@ fetch_repo() {
   local ok=0
   for u in "${urls[@]}"; do
     say "尝试: $u"
-    if git clone --depth 1 "$u" "$tmp/repo" 2>/dev/null; then ok=1; break; fi
+    if git clone --depth 1 -b "$REPO_BRANCH" "$u" "$tmp/repo" 2>/dev/null; then ok=1; break; fi
   done
   if [ "$ok" != "1" ]; then
     err "git 克隆失败（代理与直连均失败）。请手动 clone 到 $PS_ROOT 后重跑，或先安装 git。"
