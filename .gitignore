@@ -1,0 +1,19 @@
+# 运行时生成 / 下载的产物，不应入库
+node_modules/
+deps/
+deps32/
+native/steamcmd/
+native/smapi/
+node/
+dotnet/
+home/
+bin/
+.run/
+.cache/
+.env
+
+# 日志与游戏数据
+*.log
+
+# 部署时由 deploy.sh 生成的实例文件（含本机 SERVER_PORT）
+server.properties

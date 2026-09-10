@@ -1,0 +1,8 @@
+# 强制仓库内全部文本文件以 LF 换行（脚本要在 Linux 容器里跑，CRLF 会炸）
+* text=auto eol=lf
+*.sh text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.md text eol=lf

@@ -1,0 +1,238 @@
+#!/bin/bash
+# =============================================================================
+# pss - 小狗星谷服务器 服务控制脚本（非 Docker / 免 root）
+# Puppy Stardew Server control script
+#
+#   ./pss start            启动（后台，日志写入 logs/server.log）
+#   ./pss stop             停止
+#   ./pss restart          重启
+#   ./pss status           查看运行状态
+#   ./pss logs             实时跟踪日志
+#   ./pss attach           进入交互终端（tmux），用于输入 Steam Guard 验证码
+#   ./pss guard <验证码>   非交互方式发送 Steam Guard 验证码
+#   ./pss vncpass          查看自动生成的 VNC 密码
+#   ./pss update           重新执行部署/更新（deploy.sh --update）
+#
+# 交互方案：优先 tmux（可 attach 的完整终端）；无 tmux 时自动回退到
+#           FIFO + 常驻写端（sleep 保持 FIFO 不 EOF）。
+# =============================================================================
+set -uo pipefail
+
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+export PS_ROOT="${PS_ROOT:-$SELF_DIR}"
+export PS_HOME="${PS_HOME:-$PS_ROOT/home/steam}"
+
+# shellcheck disable=SC1091
+[ -f "$PS_ROOT/native/env.sh" ] && . "$PS_ROOT/native/env.sh"
+
+RUN_DIR="$PS_ROOT/.run"
+LOG_DIR="$PS_HOME/.local/share/puppy-stardew/logs"
+LOG_FILE="$LOG_DIR/server.log"
+PID_FILE="$RUN_DIR/server.pid"
+FIFO="$RUN_DIR/stdin.fifo"
+HOLD_FILE="$RUN_DIR/fifo-holder.pid"
+TMUX_SESSION="pss"
+ENTRY="$PS_ROOT/app/scripts/entrypoint.sh"
+
+G=$'\033[0;32m'; Y=$'\033[1;33m'; R=$'\033[0;31m'; B=$'\033[0;34m'; N=$'\033[0m'
+say()  { echo -e "${G}[pss]${N} $*"; }
+warn() { echo -e "${Y}[pss]${N} ⚠ $*"; }
+err()  { echo -e "${R}[pss]${N} ✗ $*" >&2; }
+step() { echo -e "${B}$*${N}"; }
+
+mkdir -p "$RUN_DIR" "$LOG_DIR"
+
+have_tmux() { command -v tmux >/dev/null 2>&1; }
+
+server_pids() {
+  pgrep -f "StardewModdingAPI" 2>/dev/null
+  pgrep -f "$ENTRY" 2>/dev/null
+  pgrep -f "crash-monitor.sh" 2>/dev/null
+}
+is_running() {
+  [ -n "$(server_pids)" ] && return 0
+  have_tmux && tmux has-session -t "$TMUX_SESSION" 2>/dev/null && return 0
+  return 1
+}
+
+load_env() {
+  if [ -f "$PS_ROOT/.env" ]; then
+    set -a; . "$PS_ROOT/.env"; set +a
+    export ENV_FILE="$PS_ROOT/.env"
+  fi
+}
+
+start() {
+  if is_running; then
+    warn "服务器已在运行中（用 ./pss status 查看详情）"
+    return 0
+  fi
+  [ -f "$ENTRY" ] || { err "找不到入口脚本: $ENTRY"; return 1; }
+  chmod +x "$ENTRY" 2>/dev/null || true
+  load_env
+
+  if [ -z "${STEAM_USERNAME:-}" ] || [ -z "${STEAM_PASSWORD:-}" ]; then
+    err "STEAM_USERNAME / STEAM_PASSWORD 未设置，请先编辑 $PS_ROOT/.env"
+    return 1
+  fi
+
+  mkdir -p /tmp/.X11-unix 2>/dev/null || true
+
+  if have_tmux; then
+    say "使用 tmux 会话 '$TMUX_SESSION' 启动（可 ./pss attach 进入）"
+    tmux new-session -d -s "$TMUX_SESSION" -c "$PS_HOME" \
+      "bash '$ENTRY' 2>&1 | tee -a '$LOG_FILE'" 2>/dev/null
+    sleep 1
+    tmux pipe-pane -t "$TMUX_SESSION" -o "cat >> '$LOG_FILE'" 2>/dev/null || true
+  else
+    warn "未检测到 tmux，回退到 FIFO 模式（用 ./pss guard <验证码> 输入）"
+    rm -f "$FIFO"
+    mkfifo "$FIFO" 2>/dev/null || { err "无法创建 FIFO: $FIFO"; return 1; }
+    setsid sleep infinity > "$FIFO" 2>/dev/null &
+    echo $! > "$HOLD_FILE"
+    setsid nohup bash "$ENTRY" < "$FIFO" >> "$LOG_FILE" 2>&1 &
+    echo $! > "$PID_FILE"
+  fi
+
+  sleep 2
+  if is_running; then
+    say "已启动。日志: $LOG_FILE"
+    say "面板:  http://localhost:18642"
+    [ -f "$PS_ROOT/.env" ] || warn "未找到 $PS_ROOT/.env，请先配置 STEAM_USERNAME / STEAM_PASSWORD"
+  else
+    err "启动后未检测到进程，请查看日志: tail -50 $LOG_FILE"
+    return 1
+  fi
+}
+
+stop() {
+  is_running || { warn "服务器未在运行"; return 0; }
+  say "正在停止服务..."
+
+  if have_tmux && tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
+    tmux kill-session -t "$TMUX_SESSION" 2>/dev/null || true
+  fi
+
+  if [ -f "$PID_FILE" ]; then
+    local pid; pid="$(cat "$PID_FILE" 2>/dev/null)"
+    [ -n "$pid" ] && kill -TERM -"$pid" 2>/dev/null || true
+    rm -f "$PID_FILE"
+  fi
+
+  local pat
+  for pat in "StardewModdingAPI" "$ENTRY" "crash-monitor.sh" \
+             "event-handler.sh" "auto-backup.sh" "status-reporter.sh" \
+             "log-monitor.sh" "vnc-monitor.sh" "player-access.sh" \
+             "web-panel/server.js" "x11vnc" "Xvfb :99"; do
+    pkill -f "$pat" 2>/dev/null || true
+  done
+
+  if [ -f "$HOLD_FILE" ]; then
+    kill "$(cat "$HOLD_FILE" 2>/dev/null)" 2>/dev/null || true
+    rm -f "$HOLD_FILE" "$FIFO"
+  fi
+
+  sleep 1
+  if is_running; then
+    warn "仍有残留进程，强制结束..."
+    pkill -9 -f "StardewModdingAPI" 2>/dev/null || true
+    pkill -9 -f "$ENTRY" 2>/dev/null || true
+  fi
+  say "已停止。"
+}
+
+restart() { stop; sleep 2; start; }
+
+status() {
+  step "运行状态"
+  if is_running; then
+    say "● 运行中"
+    echo "  进程："; server_pids | while read p; do echo "    PID $p"; done
+    if have_tmux && tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
+      echo "  tmux 会话: $TMUX_SESSION"
+    fi
+    local j
+    j="$(pgrep -f 'web-panel/server.js' | head -1)"
+    [ -n "$j" ] && echo "  面板进程 PID: $j (http://localhost:18642)"
+  else
+    say "○ 未运行"
+  fi
+  echo
+  echo "  游戏目录: $PS_HOME/stardewvalley"
+  [ -d "$PS_HOME/stardewvalley" ] && echo "    游戏文件: $([ -f "$PS_HOME/stardewvalley/StardewValley" ] && echo 已下载 || echo 未下载)" || true
+  [ -f "$PS_HOME/stardewvalley/StardewModdingAPI" ] && echo "    SMAPI: 已安装" || echo "    SMAPI: 未安装"
+}
+
+logs() {
+  [ -f "$LOG_FILE" ] || { err "日志文件不存在: $LOG_FILE"; return 1; }
+  tail -F "$LOG_FILE"
+}
+
+attach() {
+  if have_tmux && tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
+    say "连接到 tmux 会话（Ctrl-B 再按 D 脱离，不会停止服务器）"
+    tmux attach -t "$TMUX_SESSION"
+  else
+    err "未运行 tmux 会话。请先用 ./pss start 启动（需 tmux 才能 attach）。"
+  fi
+}
+
+guard() {
+  local code="${1:-}"
+  [ -z "$code" ] && { err "用法: ./pss guard <Steam Guard 验证码>"; return 1; }
+  if have_tmux && tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
+    say "向 tmux 会话发送 Steam Guard 验证码..."
+    tmux send-keys -t "$TMUX_SESSION" "$code" Enter
+    say "已发送。稍候查看日志 ./pss logs 确认是否通过。"
+  elif [ -p "$FIFO" ]; then
+    say "写入 FIFO 发送 Steam Guard 验证码..."
+    printf '%s\n' "$code" > "$FIFO"
+    say "已发送。"
+  else
+    err "当前不是交互模式（无 tmux / FIFO），无法注入验证码。"
+    err "请在 .env 设置 STEAM_GUARD_CODE=<验证码> 后 ./pss restart"
+  fi
+}
+
+vncpass() {
+  local f="$PS_HOME/web-panel/data/vnc_password.txt"
+  if [ -f "$f" ]; then
+    say "VNC 密码: $(cat "$f")"
+  else
+    warn "尚未生成 VNC 密码文件: $f（服务器启动后才会生成）"
+  fi
+}
+
+update() {
+  say "重新执行部署（更新模式）..."
+  bash "$PS_ROOT/deploy.sh" --update
+}
+
+usage() {
+  cat <<'U'
+用法: ./pss <命令>
+  start     启动服务器（后台）
+  stop      停止服务器
+  restart   重启
+  status    查看状态
+  logs      实时跟踪日志
+  attach    进入 tmux 交互终端（输入 Steam Guard 验证码）
+  guard <码> 发送 Steam Guard 验证码
+  vncpass   查看 VNC 密码
+  update    重新部署 / 更新
+U
+}
+
+case "${1:-}" in
+  start)   start ;;
+  stop)    stop ;;
+  restart) restart ;;
+  status)  status ;;
+  logs)    logs ;;
+  attach)  attach ;;
+  guard)   guard "$2" ;;
+  vncpass) vncpass ;;
+  update)  update ;;
+  -h|--help|"") usage ;;
+  *) err "未知命令: $1"; usage; exit 1 ;;
+esac
