@@ -9,8 +9,17 @@ set -euo pipefail
 PS_ROOT="${PS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd)}"
 NODE_DIR="$PS_ROOT/node"
 
+# 系统 Node.js 优先（简幻欢镜像已预装 Node 22 LTS）
+if command -v node >/dev/null 2>&1; then
+  SYS_VER="$(node -v 2>/dev/null | tr -d 'v' | cut -d. -f1)"
+  if [ "${SYS_VER:-0}" -ge 18 ] 2>/dev/null; then
+    echo "[node] 系统 node 已满足要求：$(node -v)，跳过本地安装"
+    exit 0
+  fi
+fi
+
 if [ -x "$NODE_DIR/bin/node" ]; then
-  echo "[node] 已存在：$("$NODE_DIR/bin/node" --version)"
+  echo "[node] 本地已存在：$("$NODE_DIR/bin/node" --version)"
   exit 0
 fi
 

@@ -15,13 +15,19 @@ export PS_ROOT PS_HOME
 # 项目脚本目录
 export PATH="$PS_ROOT/app/scripts:$PATH"
 
-# 独立安装的 Node.js（若 deploy.sh 下载了）
-if [ -x "$PS_ROOT/node/bin/node" ]; then
+# 系统 Node.js 优先（简幻欢镜像已预装 Node 22 LTS）。
+# 仅当系统未提供 node 时，才把本地独立安装的 node 作为 fallback 加入 PATH。
+if command -v node >/dev/null 2>&1; then
+  : # 使用系统 node
+elif [ -x "$PS_ROOT/node/bin/node" ]; then
   export PATH="$PS_ROOT/node/bin:$PATH"
 fi
 
-# .NET 运行时（SMAPI 需要）
-if [ -x "$PS_ROOT/dotnet/dotnet" ]; then
+# 系统 .NET 优先（简幻欢镜像已预装 .NET 6/8/9）。
+# 仅当系统未提供 dotnet 时，才启用本地独立安装的 dotnet。
+if command -v dotnet >/dev/null 2>&1; then
+  : # 使用系统 dotnet
+elif [ -x "$PS_ROOT/dotnet/dotnet" ]; then
   export DOTNET_ROOT="$PS_ROOT/dotnet"
   export PATH="$PS_ROOT/dotnet:$PATH"
   export DOTNET_CLI_TELEMETRY_OPTOUT=1

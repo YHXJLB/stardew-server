@@ -10,8 +10,14 @@ PS_ROOT="${PS_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd)}"
 DOTNET_DIR="$PS_ROOT/dotnet"
 CHANNEL="${CHANNEL:-6.0}"
 
+# 系统 .NET 优先（简幻欢镜像已预装 .NET 6/8/9）
+if command -v dotnet >/dev/null 2>&1; then
+  echo "[dotnet] 系统 dotnet 已满足要求：$(dotnet --version 2>/dev/null)，跳过本地安装"
+  exit 0
+fi
+
 if [ -x "$DOTNET_DIR/dotnet" ]; then
-  echo "[dotnet] 已存在：$("$DOTNET_DIR/dotnet" --version 2>/dev/null || echo present)"
+  echo "[dotnet] 本地已存在：$("$DOTNET_DIR/dotnet" --version 2>/dev/null || echo present)"
   # 若要求 8.0 且已有 8，跳过
   exit 0
 fi
